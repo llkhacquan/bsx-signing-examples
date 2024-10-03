@@ -1,0 +1,9 @@
+[package]
+name = "bsx-rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ethers = "2.0" # Adds the ethers crate for Ethereum interactions
+tokio = { version = "1", features = ["full"] } # For async support
+hex = "0.4"
