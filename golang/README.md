@@ -1,0 +1,8 @@
+# run
+
+```bash
+go run main.go
+domainSeparator: 452197ade50f91a3e8593509e6cbf206700b274eaa41dc959a141a499d1943ef
+typedDataHash: fbea394814ee65e1fcdcd78ecef18fb69fb58f0ba604903b2eec33cd676c446e
+Signature: 8cc51c73e31b54427e638fdc195601b1244e4db6be3d0af9661c058f697709ec5652fdb52ba7c8d7f808e05f7c509b3db7c7acb075164f993b1fb60da85596571c
+```
