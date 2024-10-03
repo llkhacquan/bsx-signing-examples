@@ -15,11 +15,20 @@ struct Domain {
 // Order struct analogous to Go's "Order" struct
 #[derive(Debug)]
 struct Order {
+    // address prefixed with 0x; example 0x0000000000000000000000000000000000000001
     sender: String,
+    // INTEGER string representation of the size in wei (need x10^18);
+    // example: for 1.23 ETH we need to put "1230000000000000000"
+    // We use string because int64 can't hold too large numbers
     size: String,
+    // INTEGER string representation of the price in wei (need x10^18);
+    // example: for 123.4 USDC we need to put "123400000000000000000"
     price: String,
+    // should be ~ current nano timestamp; so using uint64 is enough
     nonce: u64,
+    // BTC-1; ETH-2; etc; note that 0 is not a valid product index
     product_index: u8,
+    // 0 for buy, 1 for sell
     side: u8,
 }
 
@@ -29,26 +38,30 @@ fn manually_sign_order(
     domain: Domain,
     order: Order,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // Convert the private key hex string to a private key object
     let private_key = LocalWallet::from_str(private_key)?;
 
+    // Hash domain separator and order, similar to Go's logic
     let domain_separator = hash_typed_data_domain(&domain)?;
     println!("domainSeparator: {}", hex::encode(domain_separator));
 
     let typed_data_hash = hash_order(&order)?;
     println!("typedDataHash: {}", hex::encode(typed_data_hash));
 
+    // Create data to be hashed: "\x19\x01" + domain separator + typed data hash
     let mut data = vec![0x19, 0x01];
     data.extend_from_slice(&domain_separator);
     data.extend_from_slice(&typed_data_hash);
 
     let final_hash = keccak256(&data);
 
+    // Sign the final hash (no need for async/await here)
     let signature = private_key.sign_hash(H256::from(final_hash))?;
 
     let sig = signature.to_vec();
 
-    // on golang, we need sig[64] += 27: add 27 to recovery id (v) to conform with the standard
-    // but in rust, it looks like the library did it for us; so we don't have to manually +=27 here
+    // on Go, we need sig[64] += 27: add 27 to recovery id (v) to conform with the standard
+    // but in Rust, it looks like the library did it for us; so we don't have to manually +=27 here
     // sig[64] += 27;
 
     Ok(sig)
@@ -56,20 +69,28 @@ fn manually_sign_order(
 
 // Hash domain data using EIP712 logic, similar to Go's hashTypedDataDomain
 fn hash_typed_data_domain(domain: &Domain) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    // this string is constant and derived from the EIP712 standard
+    // we should not mess with it: adding new spaces, changing the order of the fields, changing the case of the letters, etc.
+    // for better performance, we can precompute the hash of this string and use it in the future
     let domain_type_hash = keccak256(
         "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
             .as_bytes(),
     );
+    // Name and Version are string, we can just convert them to bytes and hash them directly
     let name_hash = keccak256(domain.name.as_bytes());
     let version_hash = keccak256(domain.version.as_bytes());
 
+    // For big.Int, we need to use BigToHash to convert it to common.Hash
     let chain_id: u64 = domain.chain_id.parse()?;
     let chain_id_hash = H256::from_low_u64_be(chain_id).as_bytes().to_vec();
 
+    // encode VerifyingContract (an address) as a 32 bytes array
+    // An address is 20 bytes, so we need simply add 12 bytes of 0 to the left of the address
     let verifying_contract = H160::from_str(&domain.verifying_contract)?;
     let verifying_contract_hash = H256::from(verifying_contract).as_bytes().to_vec();
 
-    // Concatenate the hashes
+    // Concatenate all the hashes
+    // the order of the fields is important, the same as the order in the domainTypeHash
     let mut encoded_data = vec![];
     encoded_data.extend_from_slice(&domain_type_hash);
     encoded_data.extend_from_slice(&name_hash);
@@ -82,8 +103,10 @@ fn hash_typed_data_domain(domain: &Domain) -> Result<[u8; 32], Box<dyn std::erro
 
 // Hash order data using EIP712 logic, similar to Go's hashOrder
 fn hash_order(order: &Order) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    // Type hash for the Order type
     let order_type_hash = keccak256("Order(address sender,uint128 size,uint128 price,uint64 nonce,uint8 productIndex,uint8 orderSide)".as_bytes());
 
+    // Hash the individual fields with proper padding
     let sender = H160::from_str(&order.sender)?;
     let sender_hash = H256::from(sender);
 
@@ -94,6 +117,7 @@ fn hash_order(order: &Order) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     let product_index_hash = pad_to_32_bytes(&[order.product_index]);
     let side_hash = pad_to_32_bytes(&[order.side]);
 
+    // Concatenate all the fields (ordering is important)
     let mut encoded_data = vec![];
     encoded_data.extend_from_slice(&order_type_hash);
     encoded_data.extend_from_slice(sender_hash.as_bytes());
@@ -103,6 +127,7 @@ fn hash_order(order: &Order) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     encoded_data.extend_from_slice(&product_index_hash);
     encoded_data.extend_from_slice(&side_hash);
 
+    // Final hash of the entire struct
     Ok(keccak256(&encoded_data))
 }
 
